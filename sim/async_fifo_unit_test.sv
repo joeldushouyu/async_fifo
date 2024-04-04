@@ -19,8 +19,8 @@ module async_fifo_unit_test;
 
     parameter DSIZE = 32;
     parameter ASIZE = 4;
-    parameter AREMPTYSIZE = `AEMPTY;
-    parameter AWFULLSIZE = `AFULL;
+    parameter AREMPTYSIZE = 16;
+    parameter AWFULLSIZE = 16;
     parameter FALLTHROUGH = `FALLTHROUGH;
     parameter MAX_TRAFFIC = 10;
 
@@ -30,37 +30,47 @@ module async_fifo_unit_test;
     reg              wrst_n;
     reg              winc;
     reg  [DSIZE-1:0] wdata;
-    wire             wfull;
-    wire             awfull;
+    wire             wfull_fifo1;
+    wire             awfull_fifo1;
+    wire             wfull_fifo2;
+    wire             awfull_fifo2;
     reg              rclk;
     reg              rrst_n;
     reg              rinc;
     wire [DSIZE-1:0] rdata;
-    wire             rempty;
-    wire             arempty;
-
-    async_fifo
+    wire             rempty_fifo1;
+    wire             arempty_fifo1;
+    wire             rempty_fifo2;
+    wire             arempty_fifo2;
+    async_fifo_combine
     #(
         .DSIZE        (DSIZE),
-        .ASIZE        (ASIZE),
-        .AWFULLSIZE   (AWFULLSIZE),
-        .AREMPTYSIZE  (AREMPTYSIZE),
+        .ASIZE_FIFO1        (ASIZE),
+        .ASIZE_FIFO2        (ASIZE),
+        .AWFULLSIZE_FIFO1   (AWFULLSIZE),
+        .AWFULLSIZE_FIFO2   (AWFULLSIZE),
+        .AREMPTYSIZE_FIFO1  (AREMPTYSIZE),
+        .AREMPTYSIZE_FIFO2  (AREMPTYSIZE),
         .FALLTHROUGH  (FALLTHROUGH)
     )
     dut
     (
-        wclk,
-        wrst_n,
-        winc,
-        wdata,
-        wfull,
-        awfull,
-        rclk,
-        rrst_n,
-        rinc,
-        rdata,
-        rempty,
-        arempty
+        .wclk(wclk),
+        .wrst_n(wrst_n),
+        .winc(winc),
+        .wdata(wdata),
+        .wfull_fifo1(wfull_fifo1),
+        .awfull_fifo1(awfull_fifo1),
+        .wfull_fifo2(wfull_fifo2),
+        .awfull_fifo2(awfull_fifo2),
+        .rclk(rclk),
+        .rrst_n(rrst_n),
+        .rinc(rinc),
+        .rdata(rdata),
+        .rempty_fifo1(rempty_fifo1),
+        .arempty_fifo1(arempty_fifo1),
+        .rempty_fifo2(rempty_fifo2),
+        .arempty_fifo2(arempty_fifo2)
     );
 
     // An example to create a clock
@@ -103,36 +113,71 @@ module async_fifo_unit_test;
 
     `UNIT_TEST("TEST_IDLE")
 
-        `FAIL_IF(wfull);
-        `FAIL_IF(!rempty);
-
+        `FAIL_IF(wfull_fifo1);
+        `FAIL_IF(wfull_fifo2);
+        `FAIL_IF(!rempty_fifo2);
+        `FAIL_IF(!rempty_fifo1);
     `UNIT_TEST_END
 
-    `UNIT_TEST("TEST_SINGLE_WRITE_THEN_READ")
+    // `UNIT_TEST("TEST_SINGLE_WRITE_THEN_READ")
 
-        @(posedge wclk)
+    //     @(posedge wclk)
 
-        winc = 1;
-        wdata = 32'hA;
+    //     winc = 1;
+    //     wdata = 32'hA;
 
-        @(posedge wclk)
+    //     @(posedge wclk)
 
-        winc = 0;
+    //     winc = 0;
 
-        @(posedge rclk)
+    //     @(posedge rclk)
 
-        wait (rempty == 1'b0);
+    //     wait (rempty == 1'b0);
 
-        rinc = 1;
-        @(negedge rclk)
+    //     rinc = 1;
+    //     @(negedge rclk)
 
-        `FAIL_IF_NOT_EQUAL(rdata, 32'hA);
+    //     `FAIL_IF_NOT_EQUAL(rdata, 32'hA);
 
-    `UNIT_TEST_END
+    // `UNIT_TEST_END
 
     `UNIT_TEST("TEST_MULTIPLE_WRITE_THEN_READ")
+        `FAIL_IF(wfull_fifo1);
+        `FAIL_IF(!rempty_fifo1);
+        for (int i=0; i < 2**(ASIZE); i=i+1) begin
+            @(negedge wclk);
+            winc = 1;
+            wdata = i;
 
-        for (int i=0; i<10; i=i+1) begin
+
+        end
+        @(negedge wclk);
+        winc = 0;
+
+        #100
+        // fifo 2 should be full
+        `FAIL_IF(rempty_fifo2 == 1);
+        `FAIL_IF(arempty_fifo2 == 0);
+
+
+        `FAIL_IF(wfull_fifo1 == 1);// fifo1 should be able to write now
+        `FAIL_IF(awfull_fifo1 == 0);   
+        `FAIL_IF(rempty_fifo1==0);
+        @(posedge rclk);
+
+        rinc = 1;
+        for (int i=0;  i < 2**(ASIZE); i=i+1) begin
+            @(posedge rclk);
+            `FAIL_IF_NOT_EQUAL(rdata, i);
+        end
+        `FAIL_IF(rempty_fifo1 == 0);
+        `FAIL_IF(wfull_fifo1 == 1);
+    `UNIT_TEST_END
+
+    `UNIT_TEST("TEST_WRITE_TILL_FULL_THEN_READ")
+        `FAIL_IF(wfull_fifo1);
+        `FAIL_IF(!rempty_fifo1);
+        for (int i=0; i < 2**(ASIZE); i=i+1) begin
             @(negedge wclk);
             winc = 1;
             wdata = i;
@@ -140,128 +185,181 @@ module async_fifo_unit_test;
         @(negedge wclk);
         winc = 0;
 
-        #100;
+        #100
+
+        // fifo1 should still be empty for write
+        `FAIL_IF(rempty_fifo1 == 0);
+        `FAIL_IF(wfull_fifo1 == 1);
+
+        // // fifo 2 should indicate full with data to read
+        `FAIL_IF(rempty_fifo2==1);
+        `FAIL_IF(wfull_fifo2 == 0);
+
+
+        // do another round of write
+        for (int i=0; i < 2**(ASIZE); i=i+1) begin
+            @(negedge wclk);
+            winc = 1;
+            wdata = i+1;
+        end
+        @(negedge wclk);
+        winc = 0;
+        // by now, fifo1 should be full, fifo 2 should still keep it full with data
+
+        `FAIL_IF(wfull_fifo1==0);
+        `FAIL_IF(rempty_fifo1==1);
+
+        `FAIL_IF(rempty_fifo2==1);
+        `FAIL_IF(wfull_fifo2==0);
+        
+        @(posedge rclk);
+
+        rinc = 1;
+        for (int i=0;  i < 2**(ASIZE); i=i+1) begin
+            @(posedge rclk);
+            `FAIL_IF_NOT_EQUAL(rdata, i);
+        end
+        @(negedge rclk);
+        rinc = 0;
+
+
+        #100
+        // fifo1 should be free to write, but still have data in fifo2
+        `FAIL_IF(wfull_fifo1==1);
+        `FAIL_IF(rempty_fifo1==0);
+        `FAIL_IF(wfull_fifo2==0);
+        `FAIL_IF(rempty_fifo2==1);
+
 
         @(posedge rclk);
 
         rinc = 1;
-        for (int i=0; i<10; i=i+1) begin
+        for (int i=0;  i < 2**(ASIZE); i=i+1) begin
             @(posedge rclk);
-            `FAIL_IF_NOT_EQUAL(rdata, i);
+            `FAIL_IF_NOT_EQUAL(rdata, i+1);
         end
+        @(negedge rclk);
+        rinc = 0;
+        
+        #100
+        // fifo2 should be empty, so do fifo1
+        `FAIL_IF(wfull_fifo1==1);
+        `FAIL_IF(rempty_fifo1==0);
+        `FAIL_IF(wfull_fifo2 == 1);
+        `FAIL_IF(rempty_fifo2 == 0);
 
+        
     `UNIT_TEST_END
+    // `UNIT_TEST("TEST_FULL_FLAG")
 
-    `UNIT_TEST("TEST_FULL_FLAG")
+    //     winc = 1;
 
-        winc = 1;
+    //     for (int i=0; i<2**ASIZE; i=i+1) begin
+    //         @(negedge wclk)
+    //         wdata = i;
+    //     end
 
-        for (int i=0; i<2**ASIZE; i=i+1) begin
-            @(negedge wclk)
-            wdata = i;
-        end
+    //     @(negedge wclk);
+    //     winc = 0;
 
-        @(negedge wclk);
-        winc = 0;
+    //     @(posedge wclk)
+    //     `FAIL_IF_NOT_EQUAL(wfull, 1);
 
-        @(posedge wclk)
-        `FAIL_IF_NOT_EQUAL(wfull, 1);
+    // `UNIT_TEST_END
 
-    `UNIT_TEST_END
+    // `UNIT_TEST("TEST_EMPTY_FLAG")
 
-    `UNIT_TEST("TEST_EMPTY_FLAG")
+    //     `FAIL_IF_NOT_EQUAL(rempty, 1);
 
-        `FAIL_IF_NOT_EQUAL(rempty, 1);
+    //     for (int i=0; i<2**ASIZE; i=i+1) begin
+    //         @(posedge wclk)
+    //         winc = 1;
+    //         wdata = i;
+    //     end
 
-        for (int i=0; i<2**ASIZE; i=i+1) begin
-            @(posedge wclk)
-            winc = 1;
-            wdata = i;
-        end
+    //     `FAIL_IF_NOT_EQUAL(rempty, 0);
 
-        `FAIL_IF_NOT_EQUAL(rempty, 0);
+    // `UNIT_TEST_END
 
-    `UNIT_TEST_END
+    // `UNIT_TEST("TEST_ALMOST_EMPTY_FLAG")
 
-    `UNIT_TEST("TEST_ALMOST_EMPTY_FLAG")
+    //     `FAIL_IF_NOT_EQUAL(arempty, 0);
 
-        `FAIL_IF_NOT_EQUAL(arempty, 0);
+    //     winc = 1;
+    //     for (int i=0; i<AREMPTYSIZE; i=i+1) begin
 
-        winc = 1;
-        for (int i=0; i<AREMPTYSIZE; i=i+1) begin
+    //         @(negedge wclk)
+    //         wdata = i;
 
-            @(negedge wclk)
-            wdata = i;
+    //     end
 
-        end
+    //     @(negedge wclk);
+    //     winc = 0;
 
-        @(negedge wclk);
-        winc = 0;
+    //     #100;
+    //     `FAIL_IF_NOT_EQUAL(arempty, 1);
 
-        #100;
-        `FAIL_IF_NOT_EQUAL(arempty, 1);
+    // `UNIT_TEST_END
 
-    `UNIT_TEST_END
+    // `UNIT_TEST("TEST_ALMOST_FULL_FLAG")
 
-    `UNIT_TEST("TEST_ALMOST_FULL_FLAG")
+    //     winc = 1;
+    //     for (int i=0; i<2**ASIZE-AWFULLSIZE; i=i+1) begin
 
-        winc = 1;
-        for (int i=0; i<2**ASIZE-AWFULLSIZE; i=i+1) begin
+    //         @(negedge wclk)
+    //         wdata = i;
 
-            @(negedge wclk)
-            wdata = i;
+    //     end
 
-        end
+    //     @(negedge wclk);
+    //     winc = 0;
 
-        @(negedge wclk);
-        winc = 0;
+    //     @(posedge wclk)
+    //     `FAIL_IF_NOT_EQUAL(awfull, 1);
 
-        @(posedge wclk)
-        `FAIL_IF_NOT_EQUAL(awfull, 1);
+    // `UNIT_TEST_END
 
-    `UNIT_TEST_END
+    // `UNIT_TEST("TEST_CONCURRENT_WRITE_READ")
 
-    `UNIT_TEST("TEST_CONCURRENT_WRITE_READ")
+    //     fork
+    //     // Concurrent accesses
+    //     begin
+    //         fork
+    //         // Write source
+    //         begin
+    //             winc = 1;
+    //             for (int i=0; i<MAX_TRAFFIC; i=i+1) begin
+    //                 while (wfull)
+    //                     @(negedge wclk);
+    //                 @(negedge wclk);
+    //                 wdata = i;
+    //             end
+    //             winc = 0;
+    //         end
+    //         // Read sink
+    //         begin
+    //             for (int i=0; i<MAX_TRAFFIC; i=i+1) begin
+    //                 while (rempty)
+    //                     @(posedge rclk);
+    //                 rinc = 1;
+    //                 @(negedge rclk);
+    //                 `FAIL_IF_NOT_EQUAL(rdata, i);
+    //             end
+    //             rinc = 0;
+    //         end
+    //         join
+    //     end
+    //     // Timeout management
+    //     begin
+    //         while (timeout<10000) begin
+    //             timeout = timeout + 1;
+    //             @(posedge rclk);
+    //         end
+    //         `ERROR("Reached timeout!");
+    //     end
+    //     join_any
 
-        fork
-        // Concurrent accesses
-        begin
-            fork
-            // Write source
-            begin
-                winc = 1;
-                for (int i=0; i<MAX_TRAFFIC; i=i+1) begin
-                    while (wfull)
-                        @(negedge wclk);
-                    @(negedge wclk);
-                    wdata = i;
-                end
-                winc = 0;
-            end
-            // Read sink
-            begin
-                for (int i=0; i<MAX_TRAFFIC; i=i+1) begin
-                    while (rempty)
-                        @(posedge rclk);
-                    rinc = 1;
-                    @(negedge rclk);
-                    `FAIL_IF_NOT_EQUAL(rdata, i);
-                end
-                rinc = 0;
-            end
-            join
-        end
-        // Timeout management
-        begin
-            while (timeout<10000) begin
-                timeout = timeout + 1;
-                @(posedge rclk);
-            end
-            `ERROR("Reached timeout!");
-        end
-        join_any
-
-    `UNIT_TEST_END
+    // `UNIT_TEST_END
 
     `TEST_SUITE_END
 

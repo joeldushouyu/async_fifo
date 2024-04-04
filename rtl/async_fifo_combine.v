@@ -3,9 +3,12 @@
 
 
 module async_fifo_combine #(parameter DSIZE = 8,
-                            parameter ASIZE = 4,
-                            parameter AWFULLSIZE = 1,
-                            parameter AREMPTYSIZE = 1,
+                            parameter ASIZE_FIFO1 = 4,
+                            parameter ASIZE_FIFO2 = 4,
+                            parameter AWFULLSIZE_FIFO1 = 1,
+                            parameter AREMPTYSIZE_FIFO1 = 1,
+                            parameter AWFULLSIZE_FIFO2 = 1,
+                            parameter AREMPTYSIZE_FIFO2 = 1,
                             parameter FALLTHROUGH = "TRUE")
                            (input wire wclk,
                             input wire wrst_n,
@@ -37,13 +40,13 @@ module async_fifo_combine #(parameter DSIZE = 8,
     wire rclk_fifo1, rrst_n_fifo1;
     
     assign wrst_n_fifo1 = wrst_n;
-    assign rrst_n_fifo1 = rrst_n;
+    assign rrst_n_fifo1 = wrst_n;
     assign wclk_fifo1   = wclk;
-    assign rclk_fifo1   = rclk;
+    assign rclk_fifo1   = wclk;
     
 
     // Instantiate the FIFO
-    async_fifo #(.DSIZE(DSIZE), .ASIZE(ASIZE), .AWFULLSIZE(AWFULLSIZE), .AREMPTYSIZE(AREMPTYSIZE), .FALLTHROUGH(FALLTHROUGH)) dut (
+    async_fifo #(.DSIZE(DSIZE), .ASIZE(ASIZE_FIFO1), .AWFULLSIZE(AWFULLSIZE_FIFO1), .AREMPTYSIZE(AREMPTYSIZE_FIFO1), .FALLTHROUGH(FALLTHROUGH)) dut (
     .winc(winc),
     .wclk(wclk_fifo1),
     .wrst_n(wrst_n_fifo1),
@@ -67,13 +70,13 @@ module async_fifo_combine #(parameter DSIZE = 8,
 
     wire rclk_fifo2, rrst_n_fifo2;
     wire wrst_n_fifo2, wclk_fifo2;
-    assign wrst_n_fifo2 = rrst_n;
+    assign wrst_n_fifo2 = wrst_n;
     assign rrst_n_fifo2 = rrst_n;
-    assign wclk_fifo2   = rclk;
+    assign wclk_fifo2   = wclk;
     assign rclk_fifo2   = rclk;
     
     // Instantiate the FIFO
-    async_fifo #(.DSIZE(DSIZE), .ASIZE(ASIZE), .AWFULLSIZE(AWFULLSIZE), .AREMPTYSIZE(AREMPTYSIZE),.FALLTHROUGH(FALLTHROUGH)) dut2 (
+    async_fifo #(.DSIZE(DSIZE), .ASIZE(ASIZE_FIFO2), .AWFULLSIZE(AWFULLSIZE_FIFO2), .AREMPTYSIZE(AREMPTYSIZE_FIFO2),.FALLTHROUGH(FALLTHROUGH)) dut2 (
     .winc(winc_fifo2),
     .wclk(wclk_fifo2),
     .wrst_n(wrst_n_fifo2),
